@@ -84,3 +84,7 @@ class Validacao(models.Model):
     validador = models.ForeignKey(Validador, on_delete=models.PROTECT, related_name='validacoes')
     Transporte = models.ForeignKey(Transporte, on_delete=models.PROTECT, related_name='validacoes')
     data_hora = models.DateTimeField(auto_now_add=True)
+    dentro_janela_integracao = models.BooleanField(default=False) # true se ocorrer dentro da janela de 1h de validação anterior do mesmo usuário
+    valor_debitado = models.DecimalField(max_digits=8, decimal_places=2, default=0)
+
+    
