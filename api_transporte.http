@@ -1,0 +1,138 @@
+@baseUrl = http://localhost:8000/api
+@municipioId = 1
+@empresaId = 1
+@usuarioId = 1
+@tipoTicketId = 1
+@ticketId = 1
+@transporteId = 1
+@validadorId = 1
+
+### 1. Criar Município (Natal/RN)
+POST {{baseUrl}}/municipios/
+Content-Type: application/json
+
+{
+  "nome": "Natal",
+  "uf": "RN",
+  "endereco_sede": "Avenida Getúlio Vargas, 1000, Natal - RN",
+  "ativo": true
+}
+
+### 2. Criar Empresa de Transporte
+POST {{baseUrl}}/empresas/
+Content-Type: application/json
+
+{
+  "razao_social": "Transportes Nordeste LTDA",
+  "nome_fantasia": "Viação Nordeste",
+  "cnpj": "12.345.678/0001-90",
+  "endereco": "Rua das Flores, 500, Natal - RN",
+  "municipio": {{municipioId}}
+}
+
+### 3. Criar Usuário
+POST {{baseUrl}}/usuarios/
+Content-Type: application/json
+
+{
+  "nome": "Maria da Silva",
+  "email": "maria.silva@example.com",
+  "telefone": "(84) 9999-9999",
+  "cpf": "123.456.789-00",
+  "endereco": "Rua Principal, 100, Natal - RN",
+  "saldo": 0.00
+}
+
+### 4. Criar TipoTicket 'mensal'
+POST {{baseUrl}}/tipos-ticket/
+Content-Type: application/json
+
+{
+  "nome": "mensal",
+  "descricao": "Passagem mensal válida para 30 dias",
+  "valor": 150.00,
+  "duracao_dias": 30,
+  "ativo": true
+}
+
+### 5. Recarregar saldo do usuário
+POST {{baseUrl}}/usuarios/{{usuarioId}}/recarregar/
+Content-Type: application/json
+
+{
+  "valor": 500.00
+}
+
+### 6. Comprar Ticket
+POST {{baseUrl}}/tickets/
+Content-Type: application/json
+
+{
+  "usuario": {{usuarioId}},
+  "tipo": {{tipoTicketId}},
+  "status": "ativo"
+}
+
+### 7. Criar Transporte (ônibus)
+POST {{baseUrl}}/transportes/
+Content-Type: application/json
+
+{
+  "identificacao": "ONIBUS-001",
+  "tipo": "onibus",
+  "nome": "Ônibus Linha Leste",
+  "latitude": -5.7942,
+  "longitude": -35.2094,
+  "empresa": {{empresaId}},
+  "ativo": true
+}
+
+### 8. Criar Validador (cartão)
+POST {{baseUrl}}/validadores/
+Content-Type: application/json
+
+{
+  "codigo": "VALIDADOR-001",
+  "tipo": "cartao",
+  "transporte": {{transporteId}},
+  "data_instalacao": "2026-05-13",
+  "ativo": true
+}
+
+### 9. Validar ticket (1ª vez) - Nova passagem
+POST {{baseUrl}}/tickets/{{ticketId}}/validar/
+Content-Type: application/json
+
+{
+  "validador_id": {{validadorId}},
+  "transporte_id": {{transporteId}}
+}
+
+### 10. Validar ticket (mesma hora) - Integração tarifária
+POST {{baseUrl}}/tickets/{{ticketId}}/validar/
+Content-Type: application/json
+
+{
+  "validador_id": {{validadorId}},
+  "transporte_id": {{transporteId}}
+}
+
+### 11. Ver extrato do usuário
+GET {{baseUrl}}/usuarios/{{usuarioId}}/extrato/
+Content-Type: application/json
+
+### 12. Ver painel da empresa
+GET {{baseUrl}}/empresas/{{empresaId}}/painel/
+Content-Type: application/json
+
+### 13. Filtrar validações por ticket
+GET {{baseUrl}}/validacoes/?ticket={{ticketId}}
+Content-Type: application/json
+
+### 14. Busca textual em transportes
+GET {{baseUrl}}/transportes/?search=onibus
+Content-Type: application/json
+
+### 15. Deletar usuário com tickets (esperado: HTTP 403 ou 400 com PROTECT)
+DELETE {{baseUrl}}/usuarios/{{usuarioId}}/
+Content-Type: application/json
