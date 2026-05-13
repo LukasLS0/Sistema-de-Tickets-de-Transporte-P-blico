@@ -15,8 +15,41 @@ Including another URLconf
     2. Add a URL to urlpatterns:  path('blog/', include('blog.urls'))
 """
 from django.contrib import admin
-from django.urls import path
+from django.urls import include, path
+from rest_framework import routers
+from bilhetagem import views
+from drf_yasg.views import get_schema_view
+from drf_yasg import openapi
+
+
+
+
+
+router = routers.DefaultRouter()
+router.register(r'municipios', views.MunicipioViewSet, basename='municipio')
+router.register(r'empresas', views.EmpresaTransporteViewSet, basename='empresa')
+router.register(r'usuarios', views.UsuarioViewSet, basename='usuario')
+router.register(r'tipos-ticket', views.TipoTicketViewSet, basename='tipo-ticket')
+router.register(r'tickets', views.TicketViewSet, basename='ticket')
+router.register(r'transportes', views.TransporteViewSet, basename='transporte')
+router.register(r'validadores', views.ValidadorViewSet, basename='validador')
+router.register(r'validacoes', views.ValidacaoViewSet, basename='validacao')
+
+#25. Configure o Swagger (drf-yasg) para exibir a documentação em /swagger/ e o ReDoc
+#em /redoc
+
+schema_view = get_schema_view(
+    openapi.Info(
+        title='Sistema Ticket API',
+        default_version='v1',
+        description='Documentação da API do sistema de tickets',
+    ),
+    public=True,
+)
 
 urlpatterns = [
     path('admin/', admin.site.urls),
+    path('api/', include(router.urls)),
+    path('swagger/', schema_view.with_ui('swagger', cache_timeout=0), name='schema-swagger-ui'),
+    path('redoc/', schema_view.with_ui('redoc', cache_timeout=0), name='schema-redoc'),
 ]

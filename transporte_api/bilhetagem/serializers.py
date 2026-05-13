@@ -1,41 +1,128 @@
 from models import *
 from rest_framework import serializers
+from django.utils import timezone
+from datetime import timedelta
 
 
-# Regras de Negócio das Validações
-# • Uma validação dentro da janela de integração (60 min por padrão) NÃO debita valor —
-# apenas registra o uso (dentro_janela_integracao=True, valor_debitado=0).
-# • Fora da janela de integração, deve-se debitar o saldo do usuário e marcar a validação
-# como nova passagem.
-# • Um ticket com status diferente de 'ativo' não pode ser validado — a API deve retornar
-# HTTP 400.
-# • Tickets do tipo 'avulso' permitem apenas uma janela de integração e depois passam ao
-# status 'consumido'.
-# • Tickets do tipo 'mensal' ou 'anual' permitem validações ilimitadas durante a validade.
 
-#5. Sobrescreva o método save() do modelo Ticket para calcular automaticamente data_validade = data_compra + timedelta(days=tipo.duracao_dias) na criação.
+class MunicipioSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Municipio
+        fields = '__all__'
+
+class EmpresaTransporteSerializer(serializers.ModelSerializer):
+    municipio_nome = serializers.CharField(source='municipio.nome', read_only=True)
+
+    class Meta:
+        model = EmpresaTransporte
+        fields = '__all__'
+
+class UsuarioSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Usuario
+        fields = '__all__'
+        read_only_fields = ['saldo']
+
+class TipoTicketSerializer(serializers.ModelSerializer):
+    nome_display = serializers.CharField(source='get_nome_display', read_only=True)
+
+    class Meta:
+        model = TipoTicket
+        fields = '__all__'
+
+class TicketSerializer(serializers.ModelSerializer):
+    usuario_nome = serializers.CharField(source='usuario.nome', read_only=True)
+    tipo_nome = serializers.CharField(source='tipo.nome_display', read_only=True)
+    status_display = serializers.CharField(source='get_status_display', read_only=True)
+
+    class Meta:
+        model = Ticket
+        fields = '__all__'
+        read_only_fields = ['valor_pago', 'data_validade']
+
+    def save(self, **kwargs):
+        if not self.instance:  # Apenas na criação
+            tipo_ticket = self.validated_data['tipo']
+            self.validated_data['data_validade'] = timezone.now() + timedelta(days=tipo_ticket.duracao_dias)
+            self.validated_data['valor_pago'] = tipo_ticket.valor
+        return super().save(**kwargs)
+
+class TransporteSerializer(serializers.ModelSerializer):
+    tipo_display = serializers.CharField(source='get_tipo_display', read_only=True)
+    empresa_nome = serializers.CharField(source='empresa.nome_fantasia', read_only=True)
+
+    class Meta:
+        model = Transporte
+        fields = '__all__'
+
+class ValidadorSerializer(serializers.ModelSerializer):
+    tipo_display = serializers.CharField(source='transporte.get_tipo_display', read_only=True)
+    transporte_identificacao = serializers.CharField(source='transporte.identificacao', read_only=True, allow_null=True)
+
+    class Meta:
+        model = Validador
+        fields = '__all__'
+
+class ValidacaoSerializer(serializers.ModelSerializer):
+    usuario_nome = serializers.CharField(source='ticket.usuario.nome', read_only=True)
+    tipo_ticket = serializers.CharField(source='ticket.tipo.nome_display', read_only=True)
+    transporte_nome = serializers.CharField(source='transporte.nome', read_only=True)
+    mensagem = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Validacao
+        fields = '__all__'
+    
+    def get_mensagem(self, obj):
+        if hasattr(obj, 'dentro_janela_integracao') and obj.dentro_janela_integracao:
+            return 'Integração tarifária'
+        return 'Nova passagem'
+    
+    def create(self, validated_data):
+        # Lógica para verificar janela de integração e debitar valor
+        ticket = validated_data['ticket']
+        usuario = ticket.usuario
+        tipo_ticket = ticket.tipo
+
+        # Verificar se o ticket está ativo
+        if ticket.status != 'ativo':
+            raise serializers.ValidationError('Ticket não está ativo.')
+
+        # Verificar validações anteriores do mesmo usuário dentro da janela de integração
+        janela_integracao = tipo_ticket.duracao_dias * 24 * 60  # Convertendo dias para minutos
+        tempo_limite = timezone.now() - timedelta(minutes=janela_integracao)
+
+        validacoes_recentes = Validacao.objects.filter(
+            ticket__usuario=usuario,
+            data_hora__gte=tempo_limite
+        )
+
+        dentro_janela_integracao = validacoes_recentes.exists()
+
+        if dentro_janela_integracao:
+            valor_debitado = 0
+        else:
+            valor_debitado = tipo_ticket.valor
+            if usuario.saldo < valor_debitado:
+                raise serializers.ValidationError('Saldo insuficiente.')
+            usuario.saldo -= valor_debitado
+            usuario.save()
+
+            # Atualizar status do ticket avulso para consumido após uso
+            if tipo_ticket.nome == 'avulso':
+                ticket.status = 'consumido'
+                ticket.save()
+
+        validacao = Validacao.objects.create(
+            **validated_data,
+            dentro_janela_integracao=dentro_janela_integracao,
+            valor_debitado=valor_debitado
+        )
+        return validacao
 
 
-# unicipioSerializer — todos os campos (fields = '__all__').
-# 9. EmpresaTransporteSerializer — inclua o campo calculado municipio_nome
-# (source='municipio.nome', read_only=True).
-# 10. UsuarioSerializer — todos os campos; defina saldo como read_only=True (alterações
-# de saldo só ocorrem por validações ou cargas).
-# 11. TipoTicketSerializer — inclua o campo nome_display (get_nome_display,
-# read_only=True).
-# 12. TicketSerializer — inclua os campos calculados usuario_nome
-# (source='usuario.nome'), tipo_nome (source='tipo.nome_display'), status_display
-# (get_status_display); valor_pago e data_validade devem ser read_only.
-# 13. TransporteSerializer — inclua tipo_display (get_tipo_display) e empresa_nome
-# (source='empresa.nome_fantasia'); ambos read_only.
-# 14. ValidadorSerializer — inclua tipo_display e transporte_identificacao
-# (source='transporte.identificacao', read_only=True, allow_null=True).
-# 15. ValidacaoSerializer — este é o mais complexo. Implemente com: a) usuario_nome
-# (source='ticket.usuario.nome', read_only=True); b) tipo_ticket
-# (source='ticket.tipo.nome_display', read_only=True); c) transporte_nome
-# (source='transporte.nome', read_only=True); d) SerializerMethodField mensagem que
-# retorne 'Integração tarifária' quando dentro_janela_integracao=True ou 'Nova passagem'
-# caso contrário; e) Sobrescreva create() para verificar a janela de integração: se já existir
-# uma Validacao do mesmo ticket.usuario nas últimas N minutos (N =
-# ticket.tipo.janela_integracao_minutos), defina dentro_janela_integracao=True e
-# valor_debitado=0; caso contrário, debite o valor do tipo de ticket do saldo do usuário.
+
+
+
+
+
